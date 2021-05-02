@@ -46,7 +46,7 @@ MODULE_AUTHOR("Markus Hiienkari <mhiienka@niksula.hut.fi>");
 MODULE_DESCRIPTION("Atari, Amstrad, Commodore, Amiga, Sega, etc. joystick driver");
 MODULE_LICENSE("GPL");
 
-#define DB9_MAX_DEVICES		2
+#define DB9_MAX_DEVICES		1
 
 /* GPIO definitions */
 static volatile unsigned *gpio;
@@ -74,47 +74,27 @@ static u32 db9_bcm_model;
 #define GPPUPPDN2                59        /* Pin pull-up/down for pins 47:32 */
 #define GPPUPPDN3                60        /* Pin pull-up/down for pins 57:48 */
 
-#define MAX_PORT_GPIO			7
+#define MAX_PORT_GPIO			8
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,15,0)
 #define HAVE_TIMER_SETUP
 #endif
 
 enum pad_gpios {
-	PORT1_PIN1_GPIO = 4,
-	PORT1_PIN2_GPIO = 7,
-	PORT1_PIN3_GPIO = 8,
-	PORT1_PIN4_GPIO = 9,
-	PORT1_PIN5_GPIO = 10,
-	PORT1_PIN6_GPIO = 11,
-	PORT1_PIN7_GPIO = 14,
-	PORT2_PIN1_GPIO = 15,
-	PORT2_PIN2_GPIO = 17,
-	PORT2_PIN3_GPIO = 18,
-	PORT2_PIN4_GPIO = 22,
-	PORT2_PIN5_GPIO = 23,
-	PORT2_PIN6_GPIO = 24,
-	PORT2_PIN7_GPIO = 25
+	PORT1_PIN8_GPIO = 4,
+	PORT1_PIN2_GPIO = 14,
+	PORT1_PIN1_GPIO = 15,
+	PORT1_PIN3_GPIO = 18,
+	PORT1_PIN6_GPIO = 22,
+	PORT1_PIN4_GPIO = 23,
+	PORT1_PIN7_GPIO = 24,
+	PORT1_PIN5_GPIO = 27,
 };
 
 /* Port gpio IDs */
-static const unsigned char gpio_id[DB9_MAX_DEVICES][MAX_PORT_GPIO] = { { PORT1_PIN1_GPIO, PORT1_PIN2_GPIO, PORT1_PIN3_GPIO, PORT1_PIN4_GPIO, PORT1_PIN5_GPIO, PORT1_PIN6_GPIO, PORT1_PIN7_GPIO },
-																		{ PORT2_PIN1_GPIO, PORT2_PIN2_GPIO, PORT2_PIN3_GPIO, PORT2_PIN4_GPIO, PORT2_PIN5_GPIO, PORT2_PIN6_GPIO, PORT2_PIN7_GPIO } };
+static const unsigned char gpio_id[DB9_MAX_DEVICES][MAX_PORT_GPIO] = { { PORT1_PIN1_GPIO, PORT1_PIN2_GPIO, PORT1_PIN3_GPIO, PORT1_PIN4_GPIO, PORT1_PIN5_GPIO, PORT1_PIN6_GPIO, PORT1_PIN7_GPIO, PORT1_PIN8_GPIO } };
 /* Port status bits */
-static const unsigned long psb[DB9_MAX_DEVICES][MAX_PORT_GPIO] = { { (1<<PORT1_PIN1_GPIO),
-																	(1<<PORT1_PIN2_GPIO),
-																	(1<<PORT1_PIN3_GPIO),
-																	(1<<PORT1_PIN4_GPIO),
-																	(1<<PORT1_PIN5_GPIO),
-																	(1<<PORT1_PIN6_GPIO),
-																	(1<<PORT1_PIN7_GPIO) },
-																{ (1<<PORT2_PIN1_GPIO),
-																	(1<<PORT2_PIN2_GPIO),
-																	(1<<PORT2_PIN3_GPIO),
-																	(1<<PORT2_PIN4_GPIO),
-																	(1<<PORT2_PIN5_GPIO),
-																	(1<<PORT2_PIN6_GPIO),
-																	(1<<PORT2_PIN7_GPIO) } };
+static const unsigned long psb[DB9_MAX_DEVICES][MAX_PORT_GPIO] = { { (1<<PORT1_PIN1_GPIO), (1<<PORT1_PIN2_GPIO), (1<<PORT1_PIN3_GPIO), (1<<PORT1_PIN4_GPIO), (1<<PORT1_PIN5_GPIO), (1<<PORT1_PIN6_GPIO), (1<<PORT1_PIN7_GPIO), (1<<PORT1_PIN8_GPIO) } };
 
 struct db9_config {
 	int args[DB9_MAX_DEVICES];
@@ -135,7 +115,8 @@ MODULE_PARM_DESC(map, "Describes the set of pad connections (<PORT1>,<PORT2>)");
 #define DB9_SATURN_PAD		0x07
 #define DB9_CD32_PAD		0x08
 #define DB9_PCENGINE_PAD	0x09
-#define DB9_MAX_PAD		0x0A
+#define DB9_MULTI_SEL_START	0x0A
+#define DB9_MAX_PAD		0x0B
 
 
 /* Button map */
@@ -148,7 +129,7 @@ MODULE_PARM_DESC(map, "Describes the set of pad connections (<PORT1>,<PORT2>)");
 #define DB9_FIRE3		6
 /* Select pins for MD/SAT/CD32 pads */
 #define DB9_SELECT0		6
-#define DB9_SELECT1		5
+#define DB9_SELECT1		7
 
 
 #define DB9_GENESIS_DELAY	5
@@ -179,6 +160,7 @@ struct db9 {
 static struct db9 *db9_base;
 
 static const short db9_multi_btn[] = { BTN_TRIGGER, BTN_THUMB, BTN_THUMB2 };
+static const short db9_multi_btn_sel[] = { BTN_A, BTN_B, BTN_SELECT, BTN_START };
 static const short db9_genesis_btn[] = { BTN_START, BTN_A, BTN_B, BTN_C, BTN_X, BTN_Y, BTN_Z, BTN_MODE };
 static const short db9_saturn_btn[] = { BTN_A, BTN_B, BTN_C, BTN_X, BTN_Y, BTN_Z, BTN_TL, BTN_TR, BTN_START };
 static const short db9_cd32_btn[] = { BTN_A, BTN_B, BTN_X, BTN_Y, BTN_TR, BTN_TL, BTN_START };
@@ -196,6 +178,7 @@ static const struct db9_mode_data db9_modes[] = {
 	{ "Saturn pad",					db9_saturn_btn,   9,  7,  4,  2 },
 	{ "Amiga CD-32 pad",				db9_saturn_btn,   7,  2,  5,  2 },
 	{ "PC Engine/TurboGrafx-16 pad",		db9_pcengine_btn, 4,  2,  4,  2 },
+	{ "Multisystem joystick (select start)",	db9_multi_btn_sel,4,  2,  8,  0 },
 };
 
 /**
@@ -499,6 +482,18 @@ static void db9_timer(unsigned long private)
 				input_report_key(dev, BTN_TRIGGER, ~data & psb[i][DB9_FIRE1]);
 				input_report_key(dev, BTN_THUMB,   ~data & psb[i][DB9_FIRE2]);
 				input_report_key(dev, BTN_THUMB2,  ~data & psb[i][DB9_FIRE3]);
+				break;
+
+			case DB9_MULTI_SEL_START:
+
+				data = GPIO_STATUS;
+
+				input_report_abs(dev, ABS_X, (data & psb[i][DB9_RIGHT] ? 0 : 1) - (data & psb[i][DB9_LEFT] ? 0 : 1));
+				input_report_abs(dev, ABS_Y, (data & psb[i][DB9_DOWN]  ? 0 : 1) - (data & psb[i][DB9_UP]   ? 0 : 1));
+				input_report_key(dev, BTN_A, ~data & psb[i][DB9_FIRE1]);
+				input_report_key(dev, BTN_B,   ~data & psb[i][DB9_FIRE2]);
+				input_report_key(dev, BTN_START,  ~data & psb[i][DB9_SELECT0]);
+				input_report_key(dev, BTN_SELECT,  ~data & psb[i][DB9_SELECT1]);
 				break;
 
 			case DB9_GENESIS_PAD:
